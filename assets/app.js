@@ -1,8 +1,8 @@
 'use strict';
 
-const APP_VERSION = '1.0.457';
+const APP_VERSION = '1.0.459';
 // Version line: app1.0.455.js — 校长退出中段战略；推进骨架保留为上游硬约束；老师负责中段调度与施工并与骨架节点逐拍融合。
-const APP_FILE_VERSION = 'app1.0.457.js';
+const APP_FILE_VERSION = 'app1.0.459.js';
 // Version line: app1.0.457.js — 正文风格执行底座直连；中段自由发挥与硬边界保持分层。
 const KEY_CFG = nsKey('cfg');
 
@@ -412,15 +412,48 @@ function ssProtectMasterCanon(){
   mergeProtectedTable('_worldRules',snap.worldRules||[],x=>`rule:${String(x.cat||'').trim()}|${String(x.scope||'').trim()}|${String(x.rule||'').trim()}`);
   ssEnsureCanonEntities();
 }
+function teacherChapterNo(v){
+  const s=String(v??'').trim();
+  if(!s) return NaN;
+  const m=s.match(/(?:第\s*)?(\d{1,4})(?:\s*章)?/i);
+  return m ? Number(m[1]) : NaN;
+}
+function teacherPlanTitleKey(v){
+  return String(v||'').replace(/[《》「」『』【】]/g,'').replace(/第\s*\d+\s*章/gi,'').replace(/[\s\u3000]+/g,'').trim().toLowerCase();
+}
+function teacherPlanForChapter(plans, chapterNo, group, chapterTitle){
+  const target=Number(chapterNo), src=plans&&typeof plans==='object'?plans:{};
+  if(src[target]) return {plan:src[target],source:'key'};
+  const entries=Object.entries(src).map(([k,p])=>({key:Number(k),plan:p})).filter(x=>x.plan&&typeof x.plan==='object');
+  const exact=entries.find(x=>teacherChapterNo(x.plan?.identity?.chapter||x.plan?.chapter)===target);
+  if(exact) return {plan:exact.plan,source:'identity'};
+  const tk=teacherPlanTitleKey(chapterTitle);
+  if(tk){
+    const hit=entries.find(x=>teacherPlanTitleKey(x.plan?.identity?.title||x.plan?.title)===tk);
+    if(hit) return {plan:hit.plan,source:'title'};
+  }
+  const first=Number(group?.first), last=Number(group?.last);
+  if(Number.isInteger(first)&&Number.isInteger(last)&&entries.length===last-first+1){
+    const ordered=entries.sort((a,b)=>a.key-b.key);
+    const pos=target-first;
+    if(pos>=0&&pos<ordered.length) return {plan:ordered[pos].plan,source:'group-position'};
+  }
+  return {plan:null,source:'none'};
+}
 function commitTeacherChapterCards(plans,g,gi){
   const ss=storyState(), teacherTs=Number((state.school?.teachers?.[gi]||{}).ts)||Date.now();
   ss.chapters=ss.chapters||{};
   const committed=[];
   for(let n=g.first;n<=g.last;n++){
-    const plan=plans && plans[n];
+    const found=teacherPlanForChapter(plans,n,g,state.chapters?.[n-1]?.title);
+    const plan=found.plan;
     if(!plan) continue;
     const i=n-1;
     const card=JSON.parse(JSON.stringify(plan));
+    // 这里的数字只作为系统内部规范化后的章节身份；AI 原始编号不再作为唯一匹配条件。
+    card.identity=card.identity||{};
+    card.identity.chapter=n;
+    if(!String(card.identity.title||'').trim()) card.identity.title=String(state.chapters?.[i]?.title||'').trim();
     card.teacherGi=gi; card.teacherTs=teacherTs;
     ss.chapters[i]=ss.chapters[i]||{};
     ss.chapters[i].card=card;
@@ -449,19 +482,32 @@ function buildPlannedStateFromChapterPlan(plan,gi,teacherTs){
 function ensureCurrentTeacherCards(i){
   const ss=storyState();
   const groups=teacherAssignmentGroups();
-  const g=groups.find(x=>i+1>=x.first && i+1<=x.last);
+  const target=i+1;
+  const g=groups.find(x=>target>=x.first && target<=x.last);
   if(!g) return null;
   const gi=groups.indexOf(g);
   const sc=scState();
   const t=sc.teachers&&sc.teachers[gi];
   const existing=ss.chapters?.[i]?.card;
   if(t && existing && Number(existing.teacherGi)===Number(gi) && Number(existing.teacherTs||0)===Number(t.ts||0)) return existing;
-  const plan=t?.plans?.[i+1];
-  if(!plan) return null;
+  if(!t?.plans) return null;
   try{
-    const cards=commitTeacherChapterCards(t.plans,g,gi);
-    return cards.find(c=>Number(c.identity?.chapter||c.chapter)===Number(i+1))||null;
+    const title=state.chapters?.[i]?.title||'';
+    const found=teacherPlanForChapter(t.plans,target,g,title);
+    if(found.plan){
+      const cards=commitTeacherChapterCards(t.plans,g,gi);
+      const hit=cards.find(c=>Number(c.identity?.chapter||c.chapter)===target);
+      if(hit) return hit;
+      const card=JSON.parse(JSON.stringify(found.plan));
+      card.identity=card.identity||{}; card.identity.chapter=target;
+      if(!String(card.identity.title||'').trim()) card.identity.title=String(title||'').trim();
+      card.teacherGi=gi; card.teacherTs=Number(t.ts)||Date.now();
+      ss.chapters[i]=ss.chapters[i]||{}; ss.chapters[i].card=card;
+      ss.chapters[i].planned=buildPlannedStateFromChapterPlan(card,gi,card.teacherTs);
+      return card;
+    }
   }catch(e){ return null; }
+  return null;
 }
 
 function chapterCard(i){ return ensureCurrentTeacherCards(i); }
@@ -7421,10 +7467,14 @@ function parsePrincipalMachine(text, total){
   const unexpected=Object.keys(by).map(Number).filter(n=>n<1||n>Number(total||0));
   return {rows:by, rawCount:rows.length, uniqueCount:Object.keys(by).length, missing, invalid, duplicate:[...new Set(duplicate)], unexpected};
 }
-function normalizePrincipalChapterPlan(r){
+function normalizePrincipalChapterPlan(r, fallbackChapter){
+  const rawChapter=Number(r?.chapter);
+  const chapter=Number.isInteger(rawChapter)&&rawChapter>0?rawChapter:Number(fallbackChapter);
+  const title=String(r?.title||'').trim();
   return {
-    chapter:Number(r.chapter),
-    title:String(r.title||'').trim(),
+    chapter,
+    identity:{chapter,title},
+    title,
     function:String(r.function||'').trim(),
     goal:String(r.goal||'').trim(),
     coreEvent:String(r.coreEvent||'').trim(),
@@ -7449,8 +7499,56 @@ function normalizePrincipalChapterPlan(r){
 function normalizePrincipalPlans(parsed){
   const plans={};
   if(!parsed?.rows) return plans;
-  Object.keys(parsed.rows).map(Number).sort((a,b)=>a-b).forEach(n=>{ plans[n]=normalizePrincipalChapterPlan(parsed.rows[n]); });
+  Object.keys(parsed.rows).map(Number).sort((a,b)=>a-b).forEach(n=>{ plans[n]=normalizePrincipalChapterPlan(parsed.rows[n],n); });
   return plans;
+}
+function principalPlanForChapter(plans, chapterNo, group, chapterTitle){
+  const target=Number(chapterNo), src=plans&&typeof plans==='object'?plans:{};
+  const first=Number(group?.first), last=Number(group?.last);
+  const inScope=(n)=>Number.isInteger(first)&&Number.isInteger(last)?n>=first&&n<=last:true;
+  const entries=Object.entries(src).map(([k,p])=>({key:Number(k),plan:p})).filter(x=>x.plan&&typeof x.plan==='object');
+  // ① 真实章节号优先：只有身份章节号与目标一致时，才接受同 key 结果。
+  const keyed=entries.find(x=>x.key===target && (teacherChapterNo(x.plan?.identity?.chapter||x.plan?.chapter)===target || !Number.isFinite(teacherChapterNo(x.plan?.identity?.chapter||x.plan?.chapter))));
+  if(keyed) return {plan:keyed.plan,source:'key'};
+  // ② identity.chapter 精确匹配；目标本身必须属于当前老师负责范围。
+  const exact=entries.find(x=>inScope(teacherChapterNo(x.plan?.identity?.chapter||x.plan?.chapter)) && teacherChapterNo(x.plan?.identity?.chapter||x.plan?.chapter)===target);
+  if(exact) return {plan:exact.plan,source:'identity'};
+  // ③ 标题辅助，但只在当前老师负责章节范围内搜索，避免跨组误配。
+  const tk=teacherPlanTitleKey(chapterTitle);
+  if(tk){
+    const hit=entries.find(x=>{
+      const pn=teacherChapterNo(x.plan?.identity?.chapter||x.plan?.chapter);
+      const scoped=Number.isInteger(first)&&Number.isInteger(last)?inScope(pn):inScope(x.key);
+      return scoped && teacherPlanTitleKey(x.plan?.identity?.title||x.plan?.title)===tk;
+    });
+    if(hit) return {plan:hit.plan,source:'title'};
+  }
+  // ④ 只有负责范围完整覆盖、候选数量完全一致时，才允许按组内顺序兜底。
+  if(Number.isInteger(first)&&Number.isInteger(last)){
+    const scoped=entries.filter(x=>{
+      const pn=teacherChapterNo(x.plan?.identity?.chapter||x.plan?.chapter);
+      return Number.isFinite(pn)?inScope(pn):inScope(x.key);
+    });
+    if(scoped.length===last-first+1){
+      const ordered=scoped.sort((a,b)=>{
+        const an=teacherChapterNo(a.plan?.identity?.chapter||a.plan?.chapter); const bn=teacherChapterNo(b.plan?.identity?.chapter||b.plan?.chapter);
+        return (Number.isFinite(an)?an:a.key)-(Number.isFinite(bn)?bn:b.key);
+      });
+      const pos=target-first;
+      if(pos>=0&&pos<ordered.length) return {plan:ordered[pos].plan,source:'group-position'};
+    }
+  }
+  return {plan:null,source:'none'};
+}
+function principalPlansForGroup(plans, group, chapterTitleFn){
+  const out={};
+  if(!group) return out;
+  for(let n=Number(group.first);n<=Number(group.last);n++){
+    const title=typeof chapterTitleFn==='function'?chapterTitleFn(n):'';
+    const found=principalPlanForChapter(plans,n,group,title);
+    if(found.plan) out[n]=found.plan;
+  }
+  return out;
 }
 function principalPlanContractAudit(plans,total){
   const count=Number(total||0);
@@ -7509,11 +7607,38 @@ function parseTeacherMachine(text, first, last){
   const scenes=parseMachineBlocks(src,'SCENE');
   const handoffs=parseMachineBlocks(src,'ACTUAL_HANDOFF');
   if(!rows.length) return null;
-  const by={}; const duplicate=[];
-  rows.forEach(r=>{const n=Number(String(r.chapter||'').trim());if(Number.isInteger(n)){if(by[n]) duplicate.push(n);else by[n]=r;}});
-  // 中段施工卡是独立机器结构；没有新版卡时，兼容旧/当前教案里的 TEACHER_CHAPTER 中段字段。
+  const expected=[];
+  for(let n=Number(first);n<=Number(last);n++) expected.push(n);
+
+  // 章节编号不是唯一身份：AI 可能输出“第1章”、01、数组序号，甚至整组统一偏移。
+  // 优先使用可解析的真实章号；当整组条目数量与负责章节数一致时，再用“组内顺序”兜底，避免被编号格式卡死。
+  const rawRows=rows.map((r,idx)=>({r,idx,n:teacherChapterNo(r.chapter)}));
+  const by={}; const duplicate=[]; const rowCanonical=new Map();
+  const exactCoverage=rawRows.length===expected.length && expected.every(n=>rawRows.some(x=>x.n===n));
+  if(exactCoverage){
+    rawRows.forEach(x=>{ if(Number.isInteger(x.n) && expected.includes(x.n) && !by[x.n]){by[x.n]=x.r;rowCanonical.set(x.idx,x.n);} else if(Number.isInteger(x.n)) duplicate.push(x.n); });
+  }else if(rawRows.length===expected.length){
+    rawRows.forEach((x,idx)=>{ const n=expected[idx]; by[n]=x.r; rowCanonical.set(x.idx,n); });
+  }else{
+    rawRows.forEach(x=>{ if(Number.isInteger(x.n) && expected.includes(x.n)){ if(by[x.n]) duplicate.push(x.n); else {by[x.n]=x.r;rowCanonical.set(x.idx,x.n);} } });
+  }
+
+  // 如果编号只是统一偏移（例如0基/1基），按行顺序建立规范章节映射；场景/中段卡同步沿用该映射。
+  const rawToCanonical=new Map();
+  rawRows.forEach(x=>{
+    const c=rowCanonical.get(x.idx);
+    if(c!=null && Number.isInteger(x.n)) rawToCanonical.set(x.n,c);
+  });
+  const normalizeBlockChapter=(r,idx)=>{
+    const raw=teacherChapterNo(r?.chapter);
+    if(rawToCanonical.has(raw)) return rawToCanonical.get(raw);
+    if(expected.length===rows.length && idx<expected.length) return expected[idx];
+    return raw;
+  };
   const midBy={};
-  midCards.forEach(r=>{const n=Number(String(r.chapter||'').trim());if(Number.isInteger(n)&&!midBy[n]) midBy[n]=r;});
+  midCards.forEach((r,idx)=>{const n=normalizeBlockChapter(r,idx);if(Number.isInteger(n)&&!midBy[n]) midBy[n]=r;});
+  const sceneByChapter={};
+  scenes.forEach((r,idx)=>{const n=normalizeBlockChapter(r,idx);if(Number.isInteger(n)){(sceneByChapter[n]||(sceneByChapter[n]=[])).push(r);}});
   Object.keys(midBy).forEach(k=>{
     const r=by[k], m=midBy[k]; if(!r) return;
     ['constructionBoundary','beatRange','coveredBeats','constructionSteps','requiredStateChange','midExecution','informationMotion','characterMotion','conflictMotion','rhythmScene','difference','forbidden'].forEach(f=>{
@@ -7527,9 +7652,11 @@ function parseTeacherMachine(text, first, last){
   for(let n=Number(first);n<=Number(last);n++){
     const r=by[n];
     if(!r){missing.push(n);continue;}
+    // 正文侧只需要规范化后的章节身份，不再要求AI输出的编号文本与内部索引字面相等。
+    r.chapter=String(n);
     const miss=required.filter(k=>!String(r[k]??'').trim());
     const intensity=Number(r.endingIntensity);
-    const sc=scenes.filter(x=>Number(String(x.chapter||'').trim())===n);
+    const sc=sceneByChapter[n]||[];
     if(!Number.isInteger(intensity)||intensity<0||intensity>4) miss.push('endingIntensity(0-4)');
     if(!sc.length) miss.push('SCENE');
     sc.forEach((x,si)=>{ const sm=[]; ['location','characters','purpose','event','change','mustKeep','coversBeats'].forEach(k=>{if(!String(x[k]??'').trim())sm.push(k);}); if(sm.length)miss.push(`SCENE${si+1}:${sm.join(',')}`); });
@@ -7545,15 +7672,8 @@ function parseTeacherMachine(text, first, last){
     mustNotChange:String(h.mustNotChange||'').trim(), lastEffectiveEvent:String(h.lastEffectiveEvent||'').trim(),
     nextEntryCondition:String(h.nextEntryCondition||'').trim()
   }));
-  const handoffInvalid=[];
-  if(groupHandoffs.length!==1) handoffInvalid.push(groupHandoffs.length?'ACTUAL_HANDOFF重复，只允许1个':'缺少ACTUAL_HANDOFF');
-  if(groupHandoffs.length===1){
-    ['assignmentId','teacherGroupId','fromTeacher','toTeacher','completedState','unresolvedState','characterState','worldState','causalState','mustContinue','mustNotChange','lastEffectiveEvent','nextEntryCondition'].forEach(k=>{if(!String(groupHandoffs[0][k]||'').trim()) handoffInvalid.push(`ACTUAL_HANDOFF:${k}`);});
-  }
-  if(handoffInvalid.length) invalid.push({group:'ACTUAL_HANDOFF',fields:handoffInvalid});
-  return {rows:by,midCards:midBy,scenes,handoffs:groupHandoffs,missing,invalid,duplicate:[...new Set(duplicate)],unexpected};
+  return {rows:by,midCards:midBy,scenes:Object.values(sceneByChapter).flat(),handoffs:groupHandoffs,missing,invalid,duplicate:[...new Set(duplicate)],unexpected};
 }
-
 function parseTeacherBeats(text){
   return String(text||'').split(/(?=①|②|③|④|⑤|⑥|⑦|⑧|⑨|⑩)/).map(x=>x.trim()).filter(Boolean).map((x,i)=>({id:`P${String(i+1).padStart(2,'0')}`,text:x.replace(/^(?:①|②|③|④|⑤|⑥|⑦|⑧|⑨|⑩)\s*/,'').trim()}));
 }
@@ -8983,7 +9103,10 @@ async function genTeacher(btn, gi){
   if(!scDone('principal')){toast('请先生成校长');return false;}
   const principalPlans=state.school?.principal?.plans||{};
   const missingPrincipalPlans=[];
-  for(let n=g.first;n<=g.last;n++){ if(!principalPlans[n]) missingPrincipalPlans.push(n); }
+  for(let n=g.first;n<=g.last;n++){
+    const found=principalPlanForChapter(principalPlans,n,g,String(state.chapters?.[n-1]?.title||''));
+    if(!found.plan) missingPrincipalPlans.push(n);
+  }
   if(missingPrincipalPlans.length){ addGenerationDiagnostic('t'+gi,{type:'UPSTREAM_STRUCTURE',code:'PRINCIPAL_PLANS_PARTIAL',details:`校长结构化 plans 缺少章节：${missingPrincipalPlans.join('、')}`}); }
   const key='t'+gi; markAIRunning(key); if(btn)busy(btn,true,'备课中…'); if(btn&&btn.parentNode)showStopBtn(btn.parentNode);
   try{
@@ -9031,7 +9154,14 @@ async function genTeacher(btn, gi){
         const row=machine.rows[n];
         const scenes=machine.scenes.filter(x=>Number(String(x.chapter||'').trim())===n);
         if(!row || !scenes.length) continue;
-        try{ plans[n]=compileTeacherChapterPlan(row,scenes,principalPlans[n]); }catch(e){ addGenerationDiagnostic(key,{type:'STRUCTURE',code:'TEACHER_CHAPTER_COMPILE_ERROR',details:{chapter:n,error:String(e?.message||e)}}); }
+        try{
+          const principalFound=principalPlanForChapter(principalPlans,n,g,String(state.chapters?.[n-1]?.title||''));
+          if(!principalFound.plan){
+            addGenerationDiagnostic(key,{type:'STRUCTURE',code:'PRINCIPAL_CHAPTER_NOT_RESOLVED',details:{chapter:n,source:principalFound.source}});
+            continue;
+          }
+          plans[n]=compileTeacherChapterPlan(row,scenes,principalFound.plan);
+        }catch(e){ addGenerationDiagnostic(key,{type:'STRUCTURE',code:'TEACHER_CHAPTER_COMPILE_ERROR',details:{chapter:n,error:String(e?.message||e)}}); }
       }
     }
     _tp.compileMs=Math.round(performance.now()-_compileStart);
@@ -9354,9 +9484,15 @@ function saveTeacherFieldEdit(gi, ch, k, newV){
     return false;
   }
   const plans={};
+  const principalPlans=principalCurrentResult()?.plans||{};
   for(let n=g.first;n<=g.last;n++){
     const scenes=machine.scenes.filter(x=>Number(String(x.chapter||'').trim())===n);
-    plans[n]=compileTeacherChapterPlan(machine.rows[n],scenes,principalCurrentResult()?.plans?.[n]);
+    const principalFound=principalPlanForChapter(principalPlans,n,g,String(state.chapters?.[n-1]?.title||''));
+    if(!principalFound.plan){
+      toast(`第${n}章找不到对应校长章节计划，修改未保存；请先确认校长成果完整。`);
+      return false;
+    }
+    plans[n]=compileTeacherChapterPlan(machine.rows[n],scenes,principalFound.plan);
   }
   t.raw=raw; t.machine=true; t.machineText=raw; t.plans=plans;
   touchTeacherCurrentResult(gi,'manual_edit');
