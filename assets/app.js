@@ -1,4 +1,5 @@
-/* v1.0.532 STYLE-BASIS-LOCK: principal/teacher dynamic style decisions must be grounded in chapter microbeat + plot situation; preserve raw-teacher-only transmission.
+/* v1.0.536 STYLE-LAYER-OUTPUT-ORGANIZATION: principal first classifies selected writing-style entries into GLOBAL/HYBRID/CHAPTER pools, then assigns per chapter with teacher ownership; teacher receives GLOBAL once as locked baseline.
+ * v1.0.532 STYLE-BASIS-LOCK: principal/teacher dynamic style decisions must be grounded in chapter microbeat + plot situation; preserve raw-teacher-only transmission.
  * v1.0.527 STYLE-LAYER-TRANSMISSION: principal style-layer decision + teacher three-layer execution +正文 three-layer transmission; preserve optimized writing style source and keep layer responsibilities separate.
  * v1.0.531 STYLE-LAYER-OPTIONAL: chapter-scoped glossary/world-material injection; teacher rawText remains sole chapter-plan source; principal→正文 remains severed.
  * v1.0.524 TEACHER-STYLE-LAYER-RESTORE: restored principal generation runtime; principal→正文 remains severed.
@@ -15,9 +16,9 @@
    5) 后续版本不得把结构化教案重新接回本链。
 */
 
-const APP_VERSION = '1.0.532';
+const APP_VERSION = '1.0.536';
 // Version line: app1.0.481.js — 建立最终老师/结局负责者硬边界；单老师项目与多老师最终组均禁止虚构后续交接。
-const APP_FILE_VERSION = 'app1.0.532.js';
+const APP_FILE_VERSION = 'app1.0.536.js';
 // Version line: app1.0.520.js — 校长不得进入正文输入链；正文只接收老师原始教案及允许的运行时事实。
 const KEY_CFG = nsKey('cfg');
 
@@ -82,7 +83,7 @@ const VALIDATION_RETRY_MAX = 2; // 语义校验失败最多定向修复2次；�
 let lib = { curId: null, items: [] }; // {curId, items:[{id, idea, outline, ..., step, title, logline, updatedAt}]}
 let gglib = [];
 
-/* APP VERSION: app1.0.526.js — 正文单次生成版；强化章节内部一致性、信息去重、句式多样与人物动态反应逻辑。 */
+/* APP VERSION: app1.0.536.js — 校长三层风格输出组织与老师精确传导版。 */
 /* ================================================================
  * 【GLOBAL / HYBRID / CHAPTER｜内部开发者说明】
  * 1. GLOBAL：全书恒定风格。校长单独确定的全书风格原规则；老师只能原义继承，不能修改、弱化、删除或稀释，正文继续按原义执行。
@@ -3726,6 +3727,7 @@ function buildPolishCanonical(cand, revision){
     originalAnchors: JSON.parse(JSON.stringify(c.originalAnchors || c.coreAnchors || c.anchorPoints || state.originalIdeaAnchors || {})),
     strategicDimensions: Array.isArray(c.strategicDimensions) ? JSON.parse(JSON.stringify(c.strategicDimensions)) : (Array.isArray(v.optimizationStrategies)?JSON.parse(JSON.stringify(v.optimizationStrategies)):[]),
     diversityProfile: c.diversityProfile ? JSON.parse(JSON.stringify(c.diversityProfile)) : (v.diversityProfile ? JSON.parse(JSON.stringify(v.diversityProfile)) : null),
+    writingStyleInheritanceSupplement: JSON.parse(JSON.stringify(c.writingStyleInheritanceSupplement || c.structuredBlueprint?.writingStyleInheritanceSupplement || {source:'optimization_concept',supplementStatus:'none',inheritance:[],supplements:[]})),
     humanView:human,
     // 1.0.353：结构式创作蓝图。AI只负责提供事实，JS负责保存唯一结构。
     creativeBlueprint: JSON.parse(JSON.stringify(c.structuredBlueprint || c.storyBlueprint || {})),
@@ -6344,6 +6346,46 @@ function buildChapterStrategiesFromPrincipal(plans, targetCount){
   return out;
 }
 
+/* 内部说明书｜继承＋补充
+ * 优化构想先形成完整风格资料：继承=用户已选原词条；补充=仅在明确风格缺口存在时新增的完整词条。
+ * extractOptimizationStyleInheritanceSupplement 只提取，不生成、不改义、不扩展。
+ * 校长：读取同一权威资料，负责GLOBAL/HYBRID/CHAPTER分层与章节分配。
+ * 老师：读取同一权威资料，只对校长已分配章节的HYBRID/CHAPTER做有限详细化；GLOBAL原义继承。
+ * 正文：不重新组合该资料，最终只读取老师rawText。
+ */
+function principalOptimizedStyleCatalog(){
+  const tags=Array.isArray(state.chapterStyle?.tags)?state.chapterStyle.tags:[], lib=writeStyleLib(), entries=[];
+  for(const id of tags){ const x=lib.find(v=>String(v?.id||'')===String(id)); if(x) entries.push({id:String(x.id),name:String(x.name||x.id),category:String(x.cat||x.category||''),note:String(x.note||''),tips:Array.isArray(x.tips)?x.tips.slice():[],avoid:Array.isArray(x.avoid)?x.avoid.slice():[],check:Array.isArray(x.check)?x.check.slice():[]}); }
+  return {source:'用户在“写作风格”卡片中选定的词条（即优化后写作风格的表达层基础）',selectedCount:entries.length,entries};
+}
+/* 1.0.536：优化构想“继承＋补充”唯一权威资料包。
+ * 只读取已经确定的优化构想结果；绝不生成、改写、解释或补充风格。
+ * 同一资料包可只读注入校长与老师，避免上下游各自重建词条语义。
+ */
+function extractOptimizationStyleInheritanceSupplement(option){
+  const c=option||{};
+  const raw=c.writingStyleInheritanceSupplement || c.structuredBlueprint?.writingStyleInheritanceSupplement || {};
+  const cleanEntry=(x,allowReason)=>{
+    const o={id:String(x?.id||'').trim(),name:String(x?.name||'').trim(),definition:String(x?.definition||'').trim(),attributes:String(x?.attributes||'').trim(),features:String(x?.features||'').trim(),manifestations:String(x?.manifestations||'').trim(),examples:String(x?.examples||'').trim()};
+    if(allowReason) o.reason=String(x?.reason||'').trim();
+    return o;
+  };
+  const inheritance=Array.isArray(raw.inheritance)?raw.inheritance.map(x=>cleanEntry(x,false)).filter(x=>x.id&&x.name):[];
+  const supplements=Array.isArray(raw.supplements)?raw.supplements.map(x=>cleanEntry(x,true)).filter(x=>x.id&&x.name):[];
+  return {source:'optimization_concept',supplementStatus:supplements.length?'present':'none',inheritance,supplements};
+}
+function optimizationStyleInheritanceSupplementBlock(option){
+  const p=extractOptimizationStyleInheritanceSupplement(option);
+  const fmt=(x,reason)=>`- ${x.id}｜${x.name}｜${x.definition}｜属性：${x.attributes}｜特征：${x.features}｜表现：${x.manifestations}｜例子：${x.examples}${reason?`｜补充原因：${x.reason}`:''}`;
+  return `【优化构想｜继承＋补充｜唯一权威资料】\n这是优化构想阶段已经确定的写作风格资料，不是让下游重新创造风格。\n\n【继承】\n${p.inheritance.length?p.inheritance.map(x=>fmt(x,false)).join('\n'):'无'}\n\n【补充】\n${p.supplements.length?p.supplements.map(x=>fmt(x,true)).join('\n'):'无'}\n\n【使用说明】\n继承=用户已选原有写作风格词条及其完整资料；不得改义、弱化、删除或扩大。\n补充=仅在实际选项与故事存在明确风格缺口时由优化构想新增；无明确缺口时必须为“无”。补充词条已经具备完整定义、属性、特征、表现、例子和补充原因；校长与老师不得再次创造、重定义或扩大补充。内部id仅用于程序匹配，AI必须依据中文词条和完整资料执行。`;
+}
+
+function principalStyleEntryIds(v){ const a=parsePrincipalJsonField(v,[]); return Array.isArray(a)?a.map(x=>typeof x==='string'?x:String(x?.id||'')).map(x=>x.trim()).filter(Boolean):[]; }
+function readableStyleEntries(ids){
+  return principalStyleEntryIds(ids).map(id=>{ const x=writeStyleById(id); return x?`【${x.name||id}】${x.note?`：${x.note}`:''}`:`【${id}】（未找到本地词条定义，不得让下游猜测其含义）`; }).join('、');
+}
+function styleLayerDefinitionRows(ids){ return principalStyleEntryIds(ids).map(id=>{ const x=writeStyleById(id); return {id,name:String(x?.name||id),meaning:String(x?.note||x?.name||'').trim()}; }); }
+function styleLayerDefinitionText(ids, definitions){ const defs=Array.isArray(definitions)?definitions:[]; const map=new Map(defs.map(d=>[String(d?.id||''),d])); return principalStyleEntryIds(ids).map(id=>{ const d=map.get(id); const x=writeStyleById(id); const name=String(d?.name||x?.name||id).trim(); const meaning=String(d?.meaning||x?.note||x?.name||'').trim(); return `【${name}】${meaning?`：${meaning}`:''}`; }).join('、'); }
 function principalSourceBlocks(groups, targetCount){
   const o=state.outline||{}, out=[];
   const canonical=currentCanonicalStoryStrategy();
@@ -6353,6 +6395,10 @@ function principalSourceBlocks(groups, targetCount){
   _ppAddSource(out,'original_constraints','用户原始构想·仅补充未被最终战略吸收的约束',state.idea,'high','user_residual');
 
   if(canonical) _ppAddSource(out,'canonical_story_strategy','当前有效故事战略·唯一权威',canonical,'highest','canonical_story_strategy');
+
+  _ppAddSource(out,'optimized_writing_style','优化后写作风格·已选词条完整定义',principalOptimizedStyleCatalog(),'highest','optimized_writing_style');
+  const adopted=currentCanonicalStoryStrategy();
+  _ppAddSource(out,'optimized_style_inheritance_supplement','优化构想·继承＋补充·唯一权威写作风格资料',extractOptimizationStyleInheritanceSupplement(adopted||{}),'highest','optimization_style_inheritance_supplement');
 
   /* navBeacon/diversityProfile 已属于 canonical 内部组成，不再重复作为独立来源。 */
   _ppAddSource(out,'book_structure','全书章节结构·唯一数量与目录依据',_principalChapterStructure(targetCount),'highest','outline_structure');
@@ -7333,6 +7379,12 @@ CHAPTER表示“本章自身的具体微拍与剧情产生了额外的局部风�
 不得为了层数完整虚构动态层；合法组合为GLOBAL、GLOBAL+HYBRID、GLOBAL+CHAPTER、GLOBAL+HYBRID+CHAPTER。老师只负责把校长给出的HYBRID/CHAPTER有限详细化，不得创造新的风格含义。内部GLOBAL/HYBRID/CHAPTER仅作程序标识，下游必须收到中文执行语义。
 【判定依据硬规则】每章的hybridBasis/chapterBasis必须明确引用本章已提供的微拍情况与剧情情况。没有真实依据时，对应层必须留空。
 
+【写作风格词条先定层、再分章｜硬规则】
+校长必须先读取【优化后写作风格·已选词条完整定义】。先完成“三层词条归属与解释”，再进行章节分配。只能从这些已选词条中，先确定本书三层的“词条归属池”：globalStyleEntries=全书GLOBAL固定词条；hybridStyleEntries=允许按章节启用的HYBRID词条；chapterStyleEntries=允许按章节启用的CHAPTER词条。不得凭空创造新的风格代号，也不得把未选词条塞进三层。全部已选词条必须且只能归入一个归属池；GLOBAL至少一个。三个归属池必须各自提供对应的中文词条名与简明准确解释；解释必须忠实于优化后写作风格原词条，不得创造代号或新含义。词条解释只在三层归属区出现一次，章节分配区只引用词条ID，不重复解释。
+校长输出位置固定为：先【三层写作风格词条归属区】（只解释词条一次），再【章节三层分配总表】（只引用词条ID并绑定负责老师），最后进入各章PRINCIPAL_CHAPTER。不得在多个区域重复解释同一词条。老师收到后先按teacherGroupId+teacherCode+chapter三项匹配自己的章节，再读取该章分配和依据；只有匹配成功才执行详细化。
+随后再做章节分配：每个PRINCIPAL_CHAPTER必须填写styleAssignment，明确本章负责老师组、GLOBAL词条、HYBRID词条、CHAPTER词条。GLOBAL数组必须与STYLE_STRATEGY.globalStyleEntries完全一致；HYBRID/CHAPTER数组只能从各自词条池选择。没有实际需要的层，数组必须为空。这样老师不需要猜测“哪些词条属于自己负责的章节”，只需按teacherGroupId/teacherCode与章节号精确匹配。
+校长的hybridStyle/chapterStyle是对已分配词条的简洁核心执行方向，不得脱离词条本身另造风格；hybridBasis/chapterBasis仍必须分别引用本章微拍与剧情依据。
+
 【校长唯一输出契约｜v509｜单链路】
 校长负责全书战略、阶段战略、老师分工、章节战略边界与chapterMiddleShape授权；不得设计本章中段具体事件，不得生成旧结构骨架或任何beat列表。
 
@@ -7409,6 +7461,7 @@ stageTask=所属阶段任务
 hybridStyle=仅当本章确有动态融合需求时填写；只给简洁核心方向，不写施工细节。无需要时留空。
 hybridBasis=只有hybridStyle非空时必填；必须说明本章具体微拍情况与剧情情况为何需要GLOBAL结合当前阶段/老师组/环境动态调整；无hybridStyle时必须留空。
 chapterStyle=仅当本章确有局部特殊风格要求时填写；只给简洁核心方向，不写施工细节。无需要时留空。
+styleAssignment=合法JSON对象：{"teacherGroupId":"TG-...","teacherCode":"A","global":["已选词条id"],"hybrid":["已选词条id"],"chapter":["已选词条id"]}；global必须与STYLE_STRATEGY.globalStyleEntries一致；hybrid/chapter只能从对应词条池中选择；没有该层时数组必须为空。它是本章三层风格分配唯一机器归属标识，不是第二套章节计划。
 chapterBasis=只有chapterStyle非空时必填；必须说明本章自身具体微拍情况与剧情情况为何在GLOBAL/现有HYBRID之外仍需要额外局部风格要求；无chapterStyle时必须留空。
 teacherTask=给老师的章级目标与边界
 middleShapeRef=chapterMiddleShape:1
@@ -7439,6 +7492,13 @@ information=信息释放纪律
 globalStyle=【全书恒定风格】校长单独确定、向下不可改义的作品风格原规则。
 adaptiveStyle=可作为校长内部判断HYBRID的参考，但不得自动传给任何章节；具体章节是否需要HYBRID及其核心方向，只看对应PRINCIPAL_CHAPTER.hybridStyle。
 chapterStyle=可作为校长内部判断CHAPTER的参考，但不得自动传给任何章节；具体章节是否需要CHAPTER及其核心方向，只看对应PRINCIPAL_CHAPTER.chapterStyle。
+globalStyleEntries=JSON数组；只能填写优化后写作风格已选词条的id，表示被校长确定为全书GLOBAL的词条；至少一个。
+hybridStyleEntries=JSON数组；只能填写优化后写作风格已选词条的id，表示允许被校长按章节分配为HYBRID的词条；可以为空。
+chapterStyleEntries=JSON数组；只能填写优化后写作风格已选词条的id，表示允许被校长按章节分配为CHAPTER的词条；可以为空。
+globalStyleDefinitions=JSON数组；必须与globalStyleEntries逐项对应，每项为{"id":"已选词条id","name":"中文词条名","meaning":"准确简明解释"}。
+hybridStyleDefinitions=JSON数组；必须与hybridStyleEntries逐项对应，结构同上。
+chapterStyleDefinitions=JSON数组；必须与chapterStyleEntries逐项对应，结构同上。
+styleAllocationRule=每章通过PRINCIPAL_CHAPTER.styleAssignment明确本章实际采用的global/hybrid/chapter词条及负责老师组；GLOBAL是全书锁定基线，HYBRID/CHAPTER按章分配。
 narrativeRule=叙事执行规则
 dialogueRule=对白执行规则
 characterRule=人物执行规则
@@ -7597,6 +7657,7 @@ function normalizePrincipalStyleStrategy(r){
   // HYBRID / CHAPTER 是可选层：没有明确来源时保持为空，禁止用默认值机械制造动态层。
   if(!out.adaptiveStyle) out.adaptiveStyle='';
   if(!out.chapterStyle) out.chapterStyle='';
+  ['globalStyleDefinitions','hybridStyleDefinitions','chapterStyleDefinitions'].forEach(k=>{ const a=parsePrincipalJsonField(r?.[k],[]); out[k]=Array.isArray(a)?a:[]; });
   return out;
 }
 function parsePrincipalStrategyMachine(text, total, assignment){
@@ -7619,10 +7680,10 @@ function parsePrincipalStrategyMachine(text, total, assignment){
   const requiredBook=['mainline','startingState','targetState','finalTransformation','coreConflict','longTermDrivers','majorTurningPoints','majorClimaxes','irreversibleChanges','bookRhythm','endingLogic'];
   if(book) requiredBook.forEach(k=>{if(!String(book[k]||'').trim()) errors.push(`BOOK_STRATEGY缺少${k}`);});
   const requiredRules=['causality','continuity','beat','time','character','style','chapterBoundary','creationPermission','information'];
-  const requiredStyle=['globalStyle','narrativeRule','dialogueRule','characterRule','rhythmRule','sceneRule','emotionRule','specialMechanism','absoluteProhibitions','driftRisks','conflictPriority'];
+  const requiredStyle=['globalStyle','narrativeRule','dialogueRule','characterRule','rhythmRule','sceneRule','emotionRule','specialMechanism','absoluteProhibitions','driftRisks','conflictPriority','globalStyleEntries','hybridStyleEntries','chapterStyleEntries','globalStyleDefinitions','hybridStyleDefinitions','chapterStyleDefinitions'];
   const rules=rulesRows[0]||null, style=styleRows[0]||null;
   if(rules) requiredRules.forEach(k=>{if(!String(rules[k]||'').trim()) errors.push(`SCHOOL_RULES缺少${k}`);});
-  if(style) requiredStyle.forEach(k=>{if(!String(style[k]||'').trim()) errors.push(`STYLE_STRATEGY缺少${k}`);});
+  if(style){ requiredStyle.forEach(k=>{ if(['globalStyleEntries','hybridStyleEntries','chapterStyleEntries','globalStyleDefinitions','hybridStyleDefinitions','chapterStyleDefinitions'].includes(k)){ const a=parsePrincipalJsonField(style[k],null); if(!Array.isArray(a)) errors.push(`STYLE_STRATEGY的${k}必须是合法JSON数组`); } else if(!String(style[k]||'').trim()) errors.push(`STYLE_STRATEGY缺少${k}`); }); const selected=principalOptimizedStyleCatalog().entries||[], selectedIds=selected.map(x=>x.id), ge=principalStyleEntryIds(style.globalStyleEntries), he=principalStyleEntryIds(style.hybridStyleEntries), ce=principalStyleEntryIds(style.chapterStyleEntries), all=[...ge,...he,...ce], dup=all.filter((x,i)=>all.indexOf(x)!==i), unknown=all.filter(x=>!selectedIds.includes(x)), missing=selectedIds.filter(x=>!all.includes(x)); if(!ge.length) errors.push('STYLE_STRATEGY.globalStyleEntries至少需要一个已选写作风格词条'); if(dup.length) errors.push(`STYLE_STRATEGY写作风格词条重复分配：${[...new Set(dup)].join('、')}`); if(unknown.length) errors.push(`STYLE_STRATEGY包含未在当前“写作风格”卡片选定的词条：${[...new Set(unknown)].join('、')}`); if(missing.length) errors.push(`STYLE_STRATEGY未分配全部已选写作风格词条：${missing.join('、')}`); const defCheck=(field,ids,label)=>{ const defs=parsePrincipalJsonField(style[field],[]); if(!Array.isArray(defs)) return; const want=principalStyleEntryIds(ids); const got=defs.map(x=>String(x?.id||'').trim()).filter(Boolean); if(JSON.stringify(got)!==JSON.stringify(want)) errors.push(`${label}必须与对应词条池一一对应`); defs.forEach(d=>{const x=selected.find(v=>String(v.id)===String(d?.id)); if(!x) return; if(String(d?.name||'').trim()!==String(x.name||d.id).trim()) errors.push(`${label}的词条名必须使用已选词条原名：${d.id}`); const meaning=String(d?.meaning||'').trim(); const expected=String(x.note||x.name||'').trim(); if(meaning!==expected) errors.push(`${label}的词条解释必须忠实于已选词条原定义：${d.id}`);}); }; defCheck('globalStyleDefinitions',style.globalStyleEntries,'GLOBAL词条解释区'); defCheck('hybridStyleDefinitions',style.hybridStyleEntries,'HYBRID词条解释区'); defCheck('chapterStyleDefinitions',style.chapterStyleEntries,'CHAPTER词条解释区'); }
   const jsonChecks=[['BOOK_STRATEGY.longTermDrivers',book?.longTermDrivers,'array'],['BOOK_STRATEGY.majorTurningPoints',book?.majorTurningPoints,'array'],['BOOK_STRATEGY.majorClimaxes',book?.majorClimaxes,'array'],['BOOK_STRATEGY.irreversibleChanges',book?.irreversibleChanges,'array'],['BOOK_STRATEGY.bookRhythm',book?.bookRhythm,'object']];
   jsonChecks.forEach(([label,val,type])=>{if(val!=null){const parsed=parsePrincipalJsonField(val,null);if(parsed==null|| (type==='array'&&!Array.isArray(parsed)) || (type==='object'&&(typeof parsed!=='object'||Array.isArray(parsed)))) errors.push(`${label}不是合法${type==='array'?'JSON数组':'JSON对象'}`);}});
   stageRows.forEach((r,i)=>{[['stageRhythm','object']].forEach(([k,type])=>{const parsed=parsePrincipalJsonField(r[k],null);if(parsed==null||typeof parsed!=='object'||Array.isArray(parsed)) errors.push(`STAGE_STRATEGY ${i+1}的${k}不是合法JSON对象`);});});
@@ -7645,16 +7706,36 @@ function principalStrategyAudit(strategy, total, assignment){
   tgs.forEach((g,i)=>{const c=cg[i]||{}; const expectedStage=cs.find(z=>z.startChapter<=Number(c.startChapter)&&z.endChapter>=Number(c.endChapter))?.stageId||''; if(String(g.teacherGroupId)!==String(c.teacherGroupId)||Number(g.teacherIndex)!==Number(c.teacherIndex)||String(g.role)!==String(c.role)||Number(g.startChapter)!==Number(c.startChapter)||Number(g.endChapter)!==Number(c.endChapter)||Number(g.chapterCount)!==Number(c.chapterCount)||String(g.teacherCode)!==String(c.teacherCode)||String(g.previousTeacherGroupId||'')!==String(c.previousTeacherGroupId||'')||String(g.nextTeacherGroupId||'')!==String(c.nextTeacherGroupId||'')||Number(g.previousEndChapter??-1)!==Number(c.previousEndChapter??-1)||Number(g.nextStartChapter??-1)!==Number(c.nextStartChapter??-1)||String(g.stageId)!==String(expectedStage)) errors.push(`老师组${i+1}所有权事实/阶段引用与TEACHER_ASSIGNMENT不一致`);});
   return {valid:errors.length===0,errors};
 }
-function principalStrategyText(strategy){
-  const p=strategy||{}; const lines=['','━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━','【校长四层统筹战略｜v527】'];
+function principalStrategyText(strategy, chapterPlans){
+  const p=strategy||{}, plans=chapterPlans&&typeof chapterPlans==='object'?chapterPlans:{};
+  const lines=['','━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━','【校长四层统筹战略｜v535】'];
   if(p.schoolRules) lines.push(`【SCHOOL_RULES】因果=${p.schoolRules.causality}｜连续=${p.schoolRules.continuity}｜节拍=${p.schoolRules.beat}｜时间=${p.schoolRules.time}｜信息=${p.schoolRules.information}`);
-  if(p.styleStrategy){ lines.push(`【全书恒定风格｜校长原规则】${p.styleStrategy.globalStyle||'沿用已确定风格。'}`); lines.push(`【动态层说明】HYBRID/CHAPTER不在全书层面强制生成，具体是否出现及其核心方向以各PRINCIPAL_CHAPTER的hybridStyle/chapterStyle为准。`); lines.push(`【STYLE_STRATEGY】叙事=${p.styleStrategy.narrativeRule}｜对白=${p.styleStrategy.dialogueRule}｜节奏=${p.styleStrategy.rhythmRule}｜绝对禁止=${p.styleStrategy.absoluteProhibitions}`); }
+  if(p.styleStrategy){
+    const st=p.styleStrategy;
+    lines.push(`【三层写作风格｜校长唯一权威词条区】`);
+    lines.push(`【GLOBAL｜全书恒定｜锁定】${styleLayerDefinitionText(st.globalStyleEntries,st.globalStyleDefinitions)||st.globalStyle||'沿用已确定风格。'}`);
+    lines.push(`【HYBRID｜动态可选词条池】${styleLayerDefinitionText(st.hybridStyleEntries,st.hybridStyleDefinitions)||'无'}`);
+    lines.push(`【CHAPTER｜章节可选词条池】${styleLayerDefinitionText(st.chapterStyleEntries,st.chapterStyleDefinitions)||'无'}`);
+    lines.push(`【词条使用规则】三层词条只在这里解释一次；章节分配区只引用词条，不重复解释。GLOBAL每章继承；HYBRID/CHAPTER只有本章确有需要时才分配。`);
+    lines.push(`【STYLE_STRATEGY】叙事=${st.narrativeRule}｜对白=${st.dialogueRule}｜节奏=${st.rhythmRule}｜绝对禁止=${st.absoluteProhibitions}`);
+    lines.push(`【章节三层分配总表｜唯一章节归属区】`);
+    Object.keys(plans).map(Number).sort((a,b)=>a-b).forEach(n=>{
+      const cp=plans[n]||{}, sa=cp.styleAssignment||{};
+      const g=principalStyleEntryIds(sa.global).join('、')||'无';
+      const h=principalStyleEntryIds(sa.hybrid).join('、')||'无';
+      const c=principalStyleEntryIds(sa.chapter).join('、')||'无';
+      const owner=`${sa.teacherGroupId||'未标记'}/${sa.teacherCode||'未标记'}`;
+      const basis=[];
+      if(cp.hybridStyle) basis.push(`HYBRID依据=${cp.hybridBasis||'未提供'}`);
+      if(cp.chapterStyle) basis.push(`CHAPTER依据=${cp.chapterBasis||'未提供'}`);
+      lines.push(`第${n}章｜负责老师=${owner}｜GLOBAL=${g}｜HYBRID=${h}｜CHAPTER=${c}${basis.length?`｜${basis.join('｜')}`:''}`);
+    });
+  }
   const b=p.book||{}; lines.push(`【BOOK_STRATEGY】主线=${b.mainline||'未填'}｜最终转变=${b.finalTransformation||'未填'}｜核心冲突=${b.coreConflict||'未填'}｜起始状态=${b.startingState||'未填'}｜目标状态=${b.targetState||'未填'}`);
   (p.stages||[]).forEach(s=>lines.push(`【STAGE_STRATEGY ${s.stageId}】${s.startChapter}-${s.endChapter}｜${s.stageName}｜目标=${s.stageGoal}｜冲突=${s.coreConflict}｜高潮=${s.stageClimax}｜解决=${s.settlement}｜新问题=${s.newProblem}｜交接=${s.nextStageLaunch}`));
   (p.teacherGroups||[]).forEach(g=>lines.push(`【TEACHER_GROUP_STRATEGY ${g.teacherGroupId}】${g.teacherCode}｜${g.startChapter}-${g.endChapter}｜阶段=${g.stageId}｜组任务=${g.groupTask}｜节奏=${JSON.stringify(g.groupRhythm)}｜情绪=${g.emotionalCurve}｜必须推进=${g.mustAdvance.join('；')}｜禁止提前解决=${g.mustNotPrematurelyResolve.join('；')}`));
   return lines.join('\n');
 }
-
 function inspectPrincipalMachineProtocol(text){
   const src=String(text||'').replace(/\r\n?/g,'\n');
   const opens=(src.match(/\[\s*PRINCIPAL_CHAPTER\s*\]/gi)||[]).length;
@@ -7678,7 +7759,7 @@ function parsePrincipalMachine(text,total){
     const required=['chapter','title','function','goal','coreEvent','characterActions','middlePermission','endingFunction','endingIntensity','lastEffectiveEvent','endingForm','nextTransitionType','nextTransitionBasis','narrativeRole','timeStrategy','stageTask','teacherTask','handoff'];
     const miss=required.filter(k=>!String(r[k]??'').trim());
     const hybrid=String(r.hybridStyle||'').trim(), hybridBasis=String(r.hybridBasis||'').trim();
-    const chapterStyle=String(r.chapterStyle||'').trim(), chapterBasis=String(r.chapterBasis||'').trim();
+    const chapterStyle=String(r.chapterStyle||'').trim(), chapterBasis=String(r.chapterBasis||'').trim(); const sa=parsePrincipalJsonField(r.styleAssignment,{}), sg=Array.isArray(sa?.global)?sa.global.map(String):[], sh=Array.isArray(sa?.hybrid)?sa.hybrid.map(String):[], sc=Array.isArray(sa?.chapter)?sa.chapter.map(String):[], expectedGroup=principalCanonicalTeacherGroups(assignment).find(g=>Number(g.startChapter)<=n&&Number(g.endChapter)>=n); if(String(sa?.teacherGroupId||'').trim()!==String(expectedGroup?.teacherGroupId||'')) miss.push('styleAssignment.teacherGroupId必须匹配本章负责老师组'); if(String(sa?.teacherCode||'').trim()!==String(expectedGroup?.teacherCode||'')) miss.push('styleAssignment.teacherCode必须匹配本章负责老师'); const expectedGlobal=principalStyleEntryIds(style?.globalStyleEntries), allowedHybrid=principalStyleEntryIds(style?.hybridStyleEntries), allowedChapter=principalStyleEntryIds(style?.chapterStyleEntries); if(JSON.stringify(sg)!==JSON.stringify(expectedGlobal)) miss.push('styleAssignment.global必须与STYLE_STRATEGY.globalStyleEntries一致'); if(sh.some(x=>!allowedHybrid.includes(x))) miss.push('styleAssignment.hybrid含不在HYBRID词条池中的词条'); if(sc.some(x=>!allowedChapter.includes(x))) miss.push('styleAssignment.chapter含不在CHAPTER词条池中的词条'); if(!hybrid&&sh.length) miss.push('无hybridStyle时styleAssignment.hybrid必须为空'); if(hybrid&&!sh.length) miss.push('有hybridStyle时styleAssignment.hybrid不得为空'); if(!chapterStyle&&sc.length) miss.push('无chapterStyle时styleAssignment.chapter必须为空'); if(chapterStyle&&!sc.length) miss.push('有chapterStyle时styleAssignment.chapter不得为空');
     if(hybrid && !hybridBasis) miss.push('hybridBasis');
     if(!hybrid && hybridBasis) miss.push('hybridBasis必须在hybridStyle为空时留空');
     if(chapterStyle && !chapterBasis) miss.push('chapterBasis');
@@ -7693,7 +7774,7 @@ function parsePrincipalMachine(text,total){
 function normalizePrincipalChapterPlan(r,fallbackChapter){
   const rawChapter=Number(r?.chapter), chapter=Number.isInteger(rawChapter)&&rawChapter>0?rawChapter:Number(fallbackChapter);
   const title=String(r?.title||'').trim();
-  return {chapter,identity:{chapter,title},title,function:String(r.function||'').trim(),goal:String(r.goal||'').trim(),coreEvent:String(r.coreEvent||'').trim(),characterActions:String(r.characterActions||'').trim(),narrativeRole:String(r.narrativeRole||'').trim(),timeStrategy:String(r.timeStrategy||'').trim(),stageTask:String(r.stageTask||'').trim(),hybridStyle:String(r.hybridStyle||'').trim(),chapterStyle:String(r.chapterStyle||'').trim(),teacherTask:String(r.teacherTask||'').trim(),middlePermission:String(r.middlePermission||'').trim(),middleShapeRef:String(r.middleShapeRef||`chapterMiddleShape:${chapter}`).trim(),middleBoundary:{start:'after_chapter_opening',end:'before_chapter_ending',definition:'中段=章头与章末之间的全部区域'},handoff:String(r.handoff||'').trim(),ending:{function:String(r.endingFunction||'').trim(),intensity:Number(r.endingIntensity),lastEffectiveEvent:String(r.lastEffectiveEvent||'').trim(),form:String(r.endingForm||'').trim(),nextTransitionType:String(r.nextTransitionType||'').trim(),nextTransitionBasis:String(r.nextTransitionBasis||'').trim(),diversityNote:String(r.diversityNote||'').trim()}};
+  const sa=parsePrincipalJsonField(r.styleAssignment,{}); const styleAssignment={teacherGroupId:String(sa?.teacherGroupId||'').trim(),teacherCode:String(sa?.teacherCode||'').trim(),global:Array.isArray(sa?.global)?sa.global.map(String):[],hybrid:Array.isArray(sa?.hybrid)?sa.hybrid.map(String):[],chapter:Array.isArray(sa?.chapter)?sa.chapter.map(String):[]}; return {chapter,identity:{chapter,title},title,function:String(r.function||'').trim(),goal:String(r.goal||'').trim(),coreEvent:String(r.coreEvent||'').trim(),characterActions:String(r.characterActions||'').trim(),narrativeRole:String(r.narrativeRole||'').trim(),timeStrategy:String(r.timeStrategy||'').trim(),stageTask:String(r.stageTask||'').trim(),hybridStyle:String(r.hybridStyle||'').trim(),chapterStyle:String(r.chapterStyle||'').trim(),styleAssignment,teacherTask:String(r.teacherTask||'').trim(),middlePermission:String(r.middlePermission||'').trim(),middleShapeRef:String(r.middleShapeRef||`chapterMiddleShape:${chapter}`).trim(),middleBoundary:{start:'after_chapter_opening',end:'before_chapter_ending',definition:'中段=章头与章末之间的全部区域'},handoff:String(r.handoff||'').trim(),ending:{function:String(r.endingFunction||'').trim(),intensity:Number(r.endingIntensity),lastEffectiveEvent:String(r.lastEffectiveEvent||'').trim(),form:String(r.endingForm||'').trim(),nextTransitionType:String(r.nextTransitionType||'').trim(),nextTransitionBasis:String(r.nextTransitionBasis||'').trim(),diversityNote:String(r.diversityNote||'').trim()}};
 }
 function normalizePrincipalPlans(parsed){
   const plans={};
@@ -7899,33 +7980,27 @@ function teacherStyleLayers(pr, stageRows, groupStrategy, chapterPlans){
   const recovered=teacherPrincipalRuleSource(pr||{}), style=recovered.styleStrategy||{}, schoolRules=recovered.schoolRules||{};
   const rows=Array.isArray(chapterPlans)?chapterPlans:[];
   const globalText=String(style.globalStyle||'').trim() || '沿用已经确定的优化后写作风格。';
+  const globalEntries=principalStyleEntryIds(style.globalStyleEntries), hybridPool=principalStyleEntryIds(style.hybridStyleEntries), chapterPool=principalStyleEntryIds(style.chapterStyleEntries);
+  const defMap={};
+  [['globalStyleDefinitions',globalEntries],['hybridStyleDefinitions',hybridPool],['chapterStyleDefinitions',chapterPool]].forEach(([field,ids])=>{
+    const defs=Array.isArray(style[field])?style[field]:[]; defs.forEach(d=>{if(d&&d.id) defMap[String(d.id)]={name:String(d.name||d.id),meaning:String(d.meaning||'').trim()};});
+    ids.forEach(id=>{ if(!defMap[id]){const x=writeStyleById(id); defMap[id]={name:String(x?.name||id),meaning:String(x?.note||x?.name||'').trim()};} });
+  });
+  const entriesText=(ids)=>principalStyleEntryIds(ids).map(id=>{const d=defMap[id]||{};return `【${d.name||id}】${d.meaning?`：${d.meaning}`:''}`;}).join('、');
   const chapterBlocks=rows.map(({chapter,plan,middle})=>{
-    const hybridText=String(plan?.hybridStyle||'').trim();
-    const hybridBasis=String(plan?.hybridBasis||'').trim();
-    const chapterText=String(plan?.chapterStyle||'').trim();
-    const chapterBasis=String(plan?.chapterBasis||'').trim();
+    const hybridText=String(plan?.hybridStyle||'').trim(), hybridBasis=String(plan?.hybridBasis||'').trim();
+    const chapterText=String(plan?.chapterStyle||'').trim(), chapterBasis=String(plan?.chapterBasis||'').trim();
+    const sa=plan?.styleAssignment&&typeof plan.styleAssignment==='object'?plan.styleAssignment:{};
     const micro=middle||null;
-    const plotBasis={
-      chapter:Number(chapter),
-      title:String(plan?.title||'').trim(),
-      function:String(plan?.function||'').trim(),
-      goal:String(plan?.goal||'').trim(),
-      coreEvent:String(plan?.coreEvent||'').trim(),
-      characterActions:String(plan?.characterActions||'').trim()
-    };
-    const parts=[`【第${chapter}章｜风格传导依据】`,`【本章动态风格判定依据｜老师侧必须据此执行】
-【微拍情况】
-${JSON.stringify(micro,null,2)}
-【剧情情况】
-${JSON.stringify(plotBasis,null,2)}`,`【GLOBAL｜全书恒定风格｜校长原规则】\n${globalText}`];
-    if(hybridText) parts.push(`【HYBRID｜校长本章核心方向】\n${hybridText}\n【校长判定依据】\n${hybridBasis||'未提供有效依据，老师不得擅自扩展该层。'}\n老师职责：只能依据本章微拍与剧情把这一核心方向有限详细化为可执行写法，不得添加新的风格含义。`);
-    if(chapterText) parts.push(`【CHAPTER｜校长本章核心方向】\n${chapterText}\n【校长判定依据】\n${chapterBasis||'未提供有效依据，老师不得擅自扩展该层。'}\n老师职责：只能依据本章微拍与剧情把这一核心方向有限详细化为可执行写法，不得添加新的风格含义。`);
-    parts.push('层级选择规则：GLOBAL固定必有；HYBRID、CHAPTER仅在本章确有需要时出现。先判断GLOBAL是否足够；HYBRID用于阶段/老师组/环境动态融合；CHAPTER只用于本章自身微拍/剧情产生的额外局部风格要求。不得为了层数完整虚构动态层。');
+    const plotBasis={chapter:Number(chapter),title:String(plan?.title||'').trim(),function:String(plan?.function||'').trim(),goal:String(plan?.goal||'').trim(),coreEvent:String(plan?.coreEvent||'').trim(),characterActions:String(plan?.characterActions||'').trim()};
+    const parts=[`【第${chapter}章｜三层风格传导卡｜唯一章节匹配】`,`负责老师组=${sa.teacherGroupId||'未标记'}｜老师=${sa.teacherCode||'未标记'}｜章节号=${chapter}`,`【本章实际分配的词条】\nGLOBAL=${entriesText(sa.global)||'无'}\nHYBRID=${entriesText(sa.hybrid)||'无'}\nCHAPTER=${entriesText(sa.chapter)||'无'}`,`【本章动态风格判定依据｜老师详细化必须使用】\n【微拍情况】\n${JSON.stringify(micro,null,2)}\n【剧情情况】\n${JSON.stringify(plotBasis,null,2)}`];
+    if(hybridText) parts.push(`【HYBRID｜校长本章核心方向】\n${hybridText}\n【校长判定依据】\n${hybridBasis||'未提供有效依据，老师不得擅自扩展该层。'}\n【老师执行命令】只依据本章微拍与剧情，把校长这一核心方向有限详细化为可执行写法；不得新增风格目标、强度、比例、情绪、节奏或表现要求。`);
+    if(chapterText) parts.push(`【CHAPTER｜校长本章核心方向】\n${chapterText}\n【校长判定依据】\n${chapterBasis||'未提供有效依据，老师不得擅自扩展该层。'}\n【老师执行命令】只依据本章微拍与剧情，把校长这一核心方向有限详细化为可执行写法；不得把剧情内容本身改造成新的风格规则。`);
+    parts.push('【层级判断】GLOBAL固定必有；HYBRID只用于阶段/老师组/环境动态融合；CHAPTER只用于本章自身微拍/剧情产生的额外局部风格要求。没有实际需要就不输出。不得为了层数完整虚构动态层。');
     return parts.join('\n\n');
   }).join('\n\n');
-  return `【风格层级传导依据｜老师备课输入】\n${chapterBlocks||`【GLOBAL｜全书恒定风格｜校长原规则】\n${globalText}`}\n\n【老师职责边界】\nGLOBAL必须原义保留，原则上直接复制校长原规则，不得改写、弱化、删除或稀释；HYBRID/CHAPTER只有校长在对应章节明确给出核心方向和依据时才出现，老师只能依据自己本章微拍与剧情进行有限详细化，不得扩写出新的风格含义。特别禁止语义升级：降低≠禁止，减少≠取消，避免直接煽情≠禁止一切情绪表达。\n【全校写作守则关联】\n${JSON.stringify(schoolRules,null,2)}`;
+  return `【风格层级传导依据｜老师备课输入】\n【GLOBAL｜全书恒定风格｜校长锁定原规则｜组级基线】\n${globalText}\n\n【校长三层词条唯一解释区】\nGLOBAL=${entriesText(globalEntries)||'无'}\nHYBRID可分配=${entriesText(hybridPool)||'无'}\nCHAPTER可分配=${entriesText(chapterPool)||'无'}\n\n${chapterBlocks||`【GLOBAL｜全书恒定风格｜校长原规则】\n${globalText}`}\n\n【老师职责边界】\nGLOBAL必须原义保留，优先直接复制校长原规则，不得改写、弱化、删除或稀释；HYBRID/CHAPTER只有校长在对应章节明确分配、给出核心方向并提供依据时才出现，老师只能依据自己本章微拍与剧情进行有限详细化。特别禁止语义升级：降低≠禁止，减少≠取消，避免直接煽情≠禁止一切情绪表达。\n【全校写作守则关联】\n${JSON.stringify(schoolRules,null,2)}`;
 }
-
 const TEACHER_SYS = `你是一位长篇小说「老师」（任课教师），负责把校长已经裁决的全书战略、阶段战略、老师组战略、章节战略、全书恒定写作规则、章节动态执行规则、微拍结构形状、时间纪律、世界事实与连续性状态，完整转化为自己负责章节的“老师总教案原始文本”。
 
 【最高铁律｜原始教案唯一来源】
@@ -8056,6 +8131,7 @@ function buildTeacherUser(g,gi){
   lines.push(`【本次老师备课上下文｜权威总入口】\n老师代号=${code}\n系统角色=${role.role}（${role.roleLabel}）\n负责章节=${g.first}-${g.last}。\n本次任务必须覆盖负责范围内每一章，任何章节不得只写标题或一句话概述。`);
   lines.push(`【最终老师身份｜系统只读】\n最终老师=${finalFacts.finalTeacher}｜本老师是否最终负责者=${finalFacts.finalResponsible?'是':'否'}｜后续老师=${finalFacts.hasNextTeacher?finalFacts.nextTeacherCode:'无'}｜全书结局章节=${finalFacts.finalEndChapter}。`);
   lines.push(storyStateCanonBlock());
+  lines.push(optimizationStyleInheritanceSupplementBlock(currentCanonicalStoryStrategy()||{}));
 
   lines.push(`【全书战略｜完整权威输入】\n${JSON.stringify(pr.bookStrategy||{},null,2)}`);
   const stageRows=(pr.stageStrategies||[]).filter(x=>Number(x.endChapter)>=Number(g.first)&&Number(x.startChapter)<=Number(g.last));
@@ -8304,7 +8380,7 @@ async function genPrincipal(btn, opts){
           // 管理桥仅作为后台结构化路由/审计数据保存，不再混入校长AI成果纯文本。
           // 校长成果纯文本只保留AI战略结果及正式战略编译内容，避免把老师职责、系统路由等后台说明
           // 误认为是校长的剧情/中段设计。principalManagementBridge 仍会随结构化结果保存。
-          principalTxt = principalTxt.trimEnd() + '\n' + principalStrategyText(principalStrategy);
+          principalTxt = principalTxt.trimEnd() + '\n' + principalStrategyText(principalStrategy, principalPlans);
         }
         const _title0 = performance.now();
         const titles = Object.keys(principalMachine?.rows||{}).map(Number).sort((a,b)=>a-b).map(n=>({num:n,title:sanitizePrincipalChapter({title:machineField(principalMachine.rows[n],'title')}).title})).filter(x=>x.title);
@@ -9400,7 +9476,24 @@ function parseOptimizationStructuredBlock(body){
   const worldRules=listBlock(block('WORLD_RULES'));
   const creativeAdditions=listBlock(block('CREATIVE_ADDITIONS'));
   const fullBookBeat=listBlock(block('FULL_BOOK_BEAT'));
-  return {optionMeta,storyCore,protagonist,keyCharacters,relationships,world,worldRules,conflict,storyArc,fullBookBeat,ending,creativeAdditions};
+  const styleBlock=block('WRITING_STYLE_INHERITANCE_SUPPLEMENT');
+  const styleLines=String(styleBlock||'').split('\n').map(v=>v.trim()).filter(Boolean);
+  const stylePackage={source:'optimization_concept',supplementStatus:'none',inheritance:[],supplements:[]};
+  let styleSection='';
+  styleLines.forEach(line=>{
+    if(/^supplementStatus\s*[=:：]/i.test(line)) stylePackage.supplementStatus=line.replace(/^supplementStatus\s*[=:：]/i,'').trim()||'none';
+    else if(/^source\s*[=:：]/i.test(line)) stylePackage.source=line.replace(/^source\s*[=:：]/i,'').trim()||'optimization_concept';
+    else if(/^INHERITANCE$/i.test(line)) styleSection='inheritance';
+    else if(/^SUPPLEMENTS$/i.test(line)) styleSection='supplements';
+    else if(/^[-*•·]/.test(line) && styleSection){
+      const vals=line.replace(/^[-*•·]\s*/,'').split(/\s*[｜|]\s*/).map(v=>v.trim());
+      const base={id:vals[0]||'',name:vals[1]||'',definition:vals[2]||'',attributes:vals[3]||'',features:vals[4]||'',manifestations:vals[5]||'',examples:vals[6]||''};
+      if(styleSection==='supplements') base.reason=vals[7]||'';
+      if(base.id||base.name) stylePackage[styleSection].push(base);
+    }
+  });
+  stylePackage.supplementStatus = stylePackage.supplements.length ? 'present' : 'none';
+  return {optionMeta,storyCore,protagonist,keyCharacters,relationships,world,worldRules,conflict,storyArc,fullBookBeat,ending,creativeAdditions,writingStyleInheritanceSupplement:stylePackage};
 }
 
 function explicitPersonNamesFromUserIdea(){
@@ -9467,12 +9560,12 @@ function parseOptimizationPlainText(raw, multi){
     const defects=[], seedCharacters=sb.keyCharacters.map(x=>({name:x.name,identity:x.identity||'未知',age:'未知',gender:'未知',appearance:'未知',hobby:'未知',catchphrase:'无',relation:x.relation||'未知',trait:x.role||'未知'}));
     const seedPlaces=[];
     const dims=analysis.strategicDimensions.slice(0,10);
-    return {name:humanFromBlueprint.name||`方案${sec.num}`,bookTitle:humanFromBlueprint.bookTitle,novelSummary:summary,optimizedIdea,fullBookBeat:beat,creativeAdditions:creative,navBeacon:humanFromBlueprint.navBeacon,defects,seedCharacters,seedPlaces,strategicDimensions:dims,strategyFingerprint:humanFromBlueprint.strategyFingerprint,originalAnchors:JSON.parse(JSON.stringify(analysis.originalAnchors)),diversityProfile:JSON.parse(JSON.stringify(analysis.diversityProfile)),structuredBlueprint:sb,optimizationStrategies:[],diagnosis:null,text:optimizedIdea};
+    return {name:humanFromBlueprint.name||`方案${sec.num}`,bookTitle:humanFromBlueprint.bookTitle,novelSummary:summary,optimizedIdea,fullBookBeat:beat,creativeAdditions:creative,navBeacon:humanFromBlueprint.navBeacon,defects,seedCharacters,seedPlaces,strategicDimensions:dims,strategyFingerprint:humanFromBlueprint.strategyFingerprint,originalAnchors:JSON.parse(JSON.stringify(analysis.originalAnchors)),diversityProfile:JSON.parse(JSON.stringify(analysis.diversityProfile)),structuredBlueprint:sb,writingStyleInheritanceSupplement:JSON.parse(JSON.stringify(sb.writingStyleInheritanceSupplement||{source:'optimization_concept',supplementStatus:'none',inheritance:[],supplements:[]})),optimizationStrategies:[],diagnosis:null,text:optimizedIdea};
   });
   for(const o of options){ if(!o.bookTitle) o.bookTitle=''; if(!o.navBeacon.genre)o.navBeacon.genre='未明确'; if(!o.navBeacon.protagonist)o.navBeacon.protagonist='未明确'; if(!o.navBeacon.tone)o.navBeacon.tone='遵循用户已选风格'; if(!o.strategyFingerprint.mainStrategy)o.strategyFingerprint.mainStrategy=o.strategicDimensions[0]?.name||'当前故事主线'; if(!o.strategyFingerprint.secondaryStrategy)o.strategyFingerprint.secondaryStrategy=o.strategicDimensions[1]?.name||'辅助推进'; if(!o.strategyFingerprint.storyEngine)o.strategyFingerprint.storyEngine='由核心冲突持续驱动'; if(!o.strategyFingerprint.emotionalPromise)o.strategyFingerprint.emotionalPromise='持续兑现核心冲突带来的情绪推进'; if(!o.strategyFingerprint.pacing)o.strategyFingerprint.pacing='遵循用户已选全书拍子'; }
   if(analysis.strategicDimensions.length<6||analysis.strategicDimensions.length>10) return {ok:false,error:`动态战略维度解析得到 ${analysis.strategicDimensions.length} 项（要求6—10项）`,options,analysis};
   // 1.0.358：生成阶段只接受结构式蓝图，不允许结构块之外再出现平行故事版本。
-  const allowed = ['OPTION_META','STORY_CORE','PROTAGONIST','KEY_CHARACTERS','RELATIONSHIPS','WORLD','WORLD_RULES','CONFLICT','STORY_ARC','FULL_BOOK_BEAT','ENDING','CREATIVE_ADDITIONS'];
+  const allowed = ['OPTION_META','STORY_CORE','PROTAGONIST','KEY_CHARACTERS','RELATIONSHIPS','WORLD','WORLD_RULES','CONFLICT','STORY_ARC','FULL_BOOK_BEAT','ENDING','CREATIVE_ADDITIONS','WRITING_STYLE_INHERITANCE_SUPPLEMENT'];
   for(const [i,sec] of optionBlocks.entries()){
     let rest=String(sec.body||'');
     for(const tag of allowed){
@@ -9502,6 +9595,18 @@ function validateIdeaOptimizationTextOutput(raw, ctx){
     if(!String(b.protagonist?.name||'').trim()) blueprintErrors.push(`方案${i+1}的PROTAGONIST缺少name`);
     if(!String(b.protagonist?.goal||'').trim()) blueprintErrors.push(`方案${i+1}的PROTAGONIST缺少goal`);
     if(!String(b.storyCore?.core_promise||'').trim() && !String(b.storyCore?.story_question||'').trim()) blueprintErrors.push(`方案${i+1}的STORY_CORE缺少core_promise/story_question`);
+    const wsp=b.writingStyleInheritanceSupplement||{};
+    if(!Array.isArray(wsp.inheritance) || !Array.isArray(wsp.supplements)) blueprintErrors.push(`方案${i+1}缺少有效的WRITING_STYLE_INHERITANCE_SUPPLEMENT资料包`);
+    if(!['none','present'].includes(String(wsp.supplementStatus||'none'))) blueprintErrors.push(`方案${i+1}的补充状态必须为none或present`);
+    if(Array.isArray(wsp.supplements) && wsp.supplements.length && String(wsp.supplementStatus||'none')!=='present') blueprintErrors.push(`方案${i+1}存在补充词条但supplementStatus不是present`);
+    for(const [si,x] of (wsp.supplements||[]).entries()){
+      const miss=['id','name','definition','attributes','features','manifestations','examples','reason'].filter(k=>!String(x?.[k]||'').trim());
+      if(miss.length) blueprintErrors.push(`方案${i+1}补充词条${si+1}资料不完整：${miss.join('/')}`);
+    }
+    for(const [si,x] of (wsp.inheritance||[]).entries()){
+      const miss=['id','name','definition','attributes','features','manifestations','examples'].filter(k=>!String(x?.[k]||'').trim());
+      if(miss.length) blueprintErrors.push(`方案${i+1}继承词条${si+1}资料不完整：${miss.join('/')}`);
+    }
     if(!Array.isArray(b.fullBookBeat) || b.fullBookBeat.length<3) blueprintErrors.push(`方案${i+1}的FULL_BOOK_BEAT至少需要3项`);
     if(!Array.isArray(b.worldRules)) blueprintErrors.push(`方案${i+1}的WORLD_RULES结构无效`);
     if(!b.optionMeta || typeof b.optionMeta!=='object' || !String(b.optionMeta.name||'').trim()) blueprintErrors.push(`方案${i+1}缺少OPTION_META.name`);
@@ -9678,7 +9783,7 @@ function buildIdeaPolishUserFixed(ctx){
   if(wsItems && wsItems.length){
     const names = wsItems.map(s=>s.name).join(' + ');
     const details = wsItems.map(s=> `· ${s.name}：${s.note||''}${Array.isArray(s.tips)&&s.tips.length?`（写法：${s.tips.join('；')}）`:''}`).join('\n');
-    lines.push(`【用户已锁定的写作风格（所有方案必须严格服从的最高基准）】\n已选定风格：${names}\n风格核心要求：\n${details}\n【硬性要求】本次生成的全部方案中，「风格」字段及行文基调都必须严格以用户选定的上述写作风格为核心基石；允许且鼓励在此基础上为不同方案做契合的【风格补充】（如针对该方案特色的细节侧重、氛围点缀），但补充的风格必须与用户已选定的主风格完全和谐、绝不冲突违和。`);
+    lines.push(`【用户已锁定的写作风格（所有方案必须严格服从的最高基准）】\n已选定风格：${names}\n风格核心要求：\n${details}\n【继承＋补充硬性要求】优化构想必须先忠实继承上述已选词条及其完整含义；只有根据当前实际选项与故事确有明确风格缺口时，才允许新增“补充”词条。补充不是机械化步骤；没有明确缺口就必须写“无”。每个新增补充词条必须拥有独立词条名称、定义、详细属性、核心特征、具体表现、具体例子和补充原因。继承与补充最终必须单独写入【WRITING_STYLE_INHERITANCE_SUPPLEMENT】区域，作为下游唯一权威风格资料，不得只写一个标签或代号。`);
   }
   const bb = currentBookBeatCfg();
   const mb = currentBeatCfg();
@@ -10063,6 +10168,9 @@ const IDEA_OPTIMIZATION_SYS = `你是本项目的“优化构想引擎”。你�
 - CHAR_xxx 是人物身份引用ID，不是最终姓名；最终正式姓名由后续“词典达人”一次性统一命名并写入Foundation Dictionary。
 - 人物关系中也只能引用已经存在的正式姓名或CHAR_xxx，绝不能通过关系字段偷偷创造新人物姓名。
 
+【继承＋补充写作风格资料硬约束】
+每个方案必须单独形成一个【WRITING_STYLE_INHERITANCE_SUPPLEMENT】区块。先完整继承用户已选写作风格词条；再依据当前方案实际存在的风格缺口判断是否补充。补充可以新造词条，但只有存在明确缺口才允许出现；没有明确缺口必须为“无”。每个补充词条必须完整提供id、name、definition、attributes、features、manifestations、examples、reason。继承词条也必须提供id、name、definition、attributes、features、manifestations、examples。该区块是优化构想下游传导的唯一权威写作风格资料；不得让校长或老师通过猜测、代号或重新生成来获得词条含义。
+
 【唯一标准输出协议】
 AI只需要生成一种事实源：每个方案的“结构式创作蓝图”。不得让旧字段与结构蓝图形成两套独立事实。
 
@@ -10151,6 +10259,14 @@ emotional_landing=...
 [CREATIVE_ADDITIONS]
 - AI新增创意，但不能伪装成用户已确认事实
 [/CREATIVE_ADDITIONS]
+[WRITING_STYLE_INHERITANCE_SUPPLEMENT]
+supplementStatus=none或present
+source=optimization_concept
+INHERITANCE
+- id｜name｜definition｜attributes｜features｜manifestations｜examples
+SUPPLEMENTS
+- id｜name｜definition｜attributes｜features｜manifestations｜examples｜reason
+[/WRITING_STYLE_INHERITANCE_SUPPLEMENT]
 
 【一致性原则】
 - 结构式创作蓝图内部不得自相矛盾。
